@@ -1,7 +1,7 @@
 package schema
 
 import (
-	"dictionary-app/handlers"
+	"github.com/tdawidzi/dictionary_app/handlers"
 
 	"github.com/graphql-go/graphql"
 )
@@ -25,20 +25,20 @@ var wordType = graphql.NewObject(graphql.ObjectConfig{
 	},
 })
 
-// var translationType = graphql.NewObject(graphql.ObjectConfig{
-// 	Name: "Translation",
-// 	Fields: graphql.Fields{
-// 		"id": &graphql.Field{
-// 			Type: graphql.Int,
-// 		},
-// 		"id_pl": &graphql.Field{
-// 			Type: graphql.Int,
-// 		},
-// 		"id_en": &graphql.Field{
-// 			Type: graphql.Int,
-// 		},
-// 	},
-// })
+var translationType = graphql.NewObject(graphql.ObjectConfig{
+	Name: "Translation",
+	Fields: graphql.Fields{
+		"id": &graphql.Field{
+			Type: graphql.Int,
+		},
+		"id_pl": &graphql.Field{
+			Type: graphql.Int,
+		},
+		"id_en": &graphql.Field{
+			Type: graphql.Int,
+		},
+	},
+})
 
 var exampleType = graphql.NewObject(graphql.ObjectConfig{
 	Name: "Example",
@@ -84,3 +84,145 @@ var RootQuery = graphql.NewObject(graphql.ObjectConfig{
 		},
 	},
 })
+
+var RootMutation = graphql.NewObject(graphql.ObjectConfig{
+	Name: "Mutation",
+	Fields: graphql.Fields{
+		// Add a new word
+		"addWord": &graphql.Field{
+			Type: wordType,
+			Args: graphql.FieldConfigArgument{
+				"word": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"language": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+			},
+			Resolve: handlers.AddWord,
+		},
+
+		// Update an existing word
+		"updateWord": &graphql.Field{
+			Type: wordType,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"word": &graphql.ArgumentConfig{
+					Type: graphql.String,
+				},
+				"language": &graphql.ArgumentConfig{
+					Type: graphql.String,
+				},
+			},
+			Resolve: handlers.UpdateWord,
+		},
+
+		// Delete a word
+		"deleteWord": &graphql.Field{
+			Type: graphql.Boolean,
+			Args: graphql.FieldConfigArgument{
+				"word": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"language": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+			},
+			Resolve: handlers.DeleteWord,
+		},
+
+		// Add a new translation
+		"addTranslation": &graphql.Field{
+			Type: translationType,
+			Args: graphql.FieldConfigArgument{
+				"id_pl": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"id_en": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+			},
+			Resolve: handlers.AddTranslation,
+		},
+
+		// Update an existing translation
+		"updateTranslation": &graphql.Field{
+			Type: translationType,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"id_pl": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+				"id_en": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+			},
+			Resolve: handlers.UpdateTranslation,
+		},
+
+		// Delete a translation
+		"deleteTranslation": &graphql.Field{
+			Type: graphql.Boolean,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+			},
+			Resolve: handlers.DeleteTranslation,
+		},
+
+		// Add a new example
+		"addExample": &graphql.Field{
+			Type: exampleType,
+			Args: graphql.FieldConfigArgument{
+				"word_id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"example": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+			},
+			Resolve: handlers.AddExample,
+		},
+
+		// Update an existing example
+		"updateExample": &graphql.Field{
+			Type: exampleType,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+				"example": &graphql.ArgumentConfig{
+					Type: graphql.String,
+				},
+			},
+			Resolve: handlers.UpdateExample,
+		},
+
+		// Delete an example
+		"deleteExample": &graphql.Field{
+			Type: graphql.Boolean,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.Int),
+				},
+			},
+			Resolve: handlers.DeleteExample,
+		},
+	},
+})
+
+func init() {
+	schema, err := graphql.NewSchema(graphql.SchemaConfig{
+		Query:    RootQuery,
+		Mutation: RootMutation,
+	})
+	if err != nil {
+		panic(err)
+	}
+	Schema = &schema
+}

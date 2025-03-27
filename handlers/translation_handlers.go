@@ -1,10 +1,11 @@
 package handlers
 
 import (
-	"dictionary-app/models"
-	"dictionary-app/utils"
 	"fmt"
 	"sync"
+
+	"github.com/tdawidzi/dictionary_app/models"
+	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
 )
@@ -82,4 +83,92 @@ func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
 	}
 
 	return translatedWords, nil
+}
+
+func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
+	wordPl, _ := p.Args["wordPl"].(string)
+	wordEn, _ := p.Args["wordEn"].(string)
+
+	var wordPL models.Word
+	var wordEN models.Word
+
+	if err := utils.DB.Where("word = ? AND language = 'pl'", wordPl).First(&wordPL).Error; err != nil {
+		return nil, fmt.Errorf("polish word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word = ? AND language = 'en'", wordEn).First(&wordEN).Error; err != nil {
+		return nil, fmt.Errorf("english word not found: %w", err)
+	}
+
+	translation := models.Translation{
+		WordIDPl: wordPL.ID,
+		WordIDEn: wordEN.ID,
+	}
+
+	if err := utils.DB.Create(&translation).Error; err != nil {
+		return nil, fmt.Errorf("failed to create translation: %w", err)
+	}
+
+	return translation, nil
+}
+
+func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
+	oldWordPl, _ := p.Args["oldWordPl"].(string)
+	oldWordEn, _ := p.Args["oldWordEn"].(string)
+	newWordPl, _ := p.Args["newWordPl"].(string)
+	newWordEn, _ := p.Args["newWordEn"].(string)
+
+	var oldPL, oldEN, newPL, newEN models.Word
+
+	if err := utils.DB.Where("word = ? AND language = 'pl'", oldWordPl).First(&oldPL).Error; err != nil {
+		return nil, fmt.Errorf("old Polish word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word = ? AND language = 'en'", oldWordEn).First(&oldEN).Error; err != nil {
+		return nil, fmt.Errorf("old English word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word = ? AND language = 'pl'", newWordPl).First(&newPL).Error; err != nil {
+		return nil, fmt.Errorf("new Polish word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word = ? AND language = 'en'", newWordEn).First(&newEN).Error; err != nil {
+		return nil, fmt.Errorf("new English word not found: %w", err)
+	}
+
+	var translation models.Translation
+	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", oldPL.ID, oldEN.ID).First(&translation).Error; err != nil {
+		return nil, fmt.Errorf("translation not found: %w", err)
+	}
+
+	translation.WordIDPl = newPL.ID
+	translation.WordIDEn = newEN.ID
+
+	if err := utils.DB.Save(&translation).Error; err != nil {
+		return nil, fmt.Errorf("failed to update translation: %w", err)
+	}
+
+	return translation, nil
+}
+
+func DeleteTranslation(p graphql.ResolveParams) (interface{}, error) {
+	wordPl, _ := p.Args["wordPl"].(string)
+	wordEn, _ := p.Args["wordEn"].(string)
+
+	var wordPL models.Word
+	var wordEN models.Word
+
+	if err := utils.DB.Where("word = ? AND language = 'pl'", wordPl).First(&wordPL).Error; err != nil {
+		return nil, fmt.Errorf("polish word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word = ? AND language = 'en'", wordEn).First(&wordEN).Error; err != nil {
+		return nil, fmt.Errorf("english word not found: %w", err)
+	}
+
+	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", wordPL.ID, wordEN.ID).Delete(&models.Translation{}).Error; err != nil {
+		return nil, fmt.Errorf("failed to delete translation: %w", err)
+	}
+
+	return true, nil
 }

@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"dictionary-app/models"
-	"dictionary-app/utils"
 	"fmt"
+
+	"github.com/tdawidzi/dictionary_app/models"
+	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
 )
@@ -16,4 +17,50 @@ func GetWords(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("failed to fetch words: %w", err)
 	}
 	return words, nil
+}
+
+func AddWord(p graphql.ResolveParams) (interface{}, error) {
+	word, _ := p.Args["word"].(string)
+	language, _ := p.Args["language"].(string)
+
+	newWord := models.Word{Word: word, Language: language}
+	if err := utils.DB.Create(&newWord).Error; err != nil {
+		return nil, fmt.Errorf("failed to add word: %w", err)
+	}
+	return newWord, nil
+}
+
+func UpdateWord(p graphql.ResolveParams) (interface{}, error) {
+	oldWord, _ := p.Args["oldWord"].(string)
+	language, _ := p.Args["language"].(string)
+	newWord, _ := p.Args["newWord"].(string)
+
+	var word models.Word
+	if err := utils.DB.Where("word = ? AND language = ?", oldWord, language).First(&word).Error; err != nil {
+		return nil, fmt.Errorf("word not found: %w", err)
+	}
+
+	word.Word = newWord
+	if err := utils.DB.Save(&word).Error; err != nil {
+		return nil, fmt.Errorf("failed to update word: %w", err)
+	}
+
+	return word, nil
+}
+
+func DeleteWord(p graphql.ResolveParams) (interface{}, error) {
+	wordValue, _ := p.Args["word"].(string)
+	language, _ := p.Args["language"].(string)
+
+	var word models.Word
+	if err := utils.DB.Where("word = ? AND language = ?", wordValue, language).First(&word).Error; err != nil {
+		return nil, fmt.Errorf("word not found: %w", err)
+	}
+
+	// Delete the word
+	if err := utils.DB.Delete(&word).Error; err != nil {
+		return nil, fmt.Errorf("failed to delete word: %w", err)
+	}
+
+	return true, nil // Return true to indicate success
 }

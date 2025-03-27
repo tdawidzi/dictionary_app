@@ -1,10 +1,11 @@
 package handlers
 
 import (
-	"dictionary-app/models"
-	"dictionary-app/utils"
 	"fmt"
 	"sync"
+
+	"github.com/tdawidzi/dictionary_app/models"
+	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
 )
@@ -68,4 +69,54 @@ func GetExamplesForWord(p graphql.ResolveParams) (interface{}, error) {
 	}
 
 	return examples, nil
+}
+
+func AddExample(p graphql.ResolveParams) (interface{}, error) {
+	wordText, _ := p.Args["word"].(string)
+	language, _ := p.Args["language"].(string)
+	exampleText, _ := p.Args["example"].(string)
+
+	var word models.Word
+	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).First(&word).Error; err != nil {
+		return nil, fmt.Errorf("word not found: %w", err)
+	}
+
+	example := models.Example{
+		WordID:  word.ID,
+		Example: exampleText,
+	}
+
+	if err := utils.DB.Create(&example).Error; err != nil {
+		return nil, fmt.Errorf("failed to create example: %w", err)
+	}
+
+	return example, nil
+}
+
+func UpdateExample(p graphql.ResolveParams) (interface{}, error) {
+	oldExample, _ := p.Args["oldExample"].(string)
+	newExample, _ := p.Args["newExample"].(string)
+
+	var example models.Example
+	if err := utils.DB.Where("example = ?", oldExample).First(&example).Error; err != nil {
+		return nil, fmt.Errorf("example not found: %w", err)
+	}
+
+	example.Example = newExample
+
+	if err := utils.DB.Save(&example).Error; err != nil {
+		return nil, fmt.Errorf("failed to update example: %w", err)
+	}
+
+	return example, nil
+}
+
+func DeleteExample(p graphql.ResolveParams) (interface{}, error) {
+	exampleText, _ := p.Args["example"].(string)
+
+	if err := utils.DB.Where("example = ?", exampleText).Delete(&models.Example{}).Error; err != nil {
+		return nil, fmt.Errorf("failed to delete example: %w", err)
+	}
+
+	return true, nil
 }

@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"dictionary-app/config"
-	"dictionary-app/schema"
-	"dictionary-app/utils"
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/tdawidzi/dictionary_app/config"
+	"github.com/tdawidzi/dictionary_app/schema"
+	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
 )
