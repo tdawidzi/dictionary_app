@@ -1,10 +1,11 @@
 package utils
 
 import (
-	"dictionary-app/config"
-	"dictionary-app/models"
 	"fmt"
 	"log"
+
+	"github.com/tdawidzi/dictionary_app/config"
+	"github.com/tdawidzi/dictionary_app/models"
 
 	"github.com/jinzhu/gorm"
 )
