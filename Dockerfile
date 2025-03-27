@@ -1,20 +1,25 @@
 FROM golang:1.24
 
-# # Add Maintainer Info
+# Ustawiamy maintainera
 LABEL maintainer="<>"
 
-RUN mkdir /app
-ADD . /app
+# Ustawiamy katalog roboczy
 WORKDIR /app
 
+# Kopiujemy pliki modułu i pobieramy zależności
 COPY go.mod go.sum ./
-
 RUN go mod download
 
-COPY *.go ./
+# Kopiujemy cały kod aplikacji
+COPY . .
 
-RUN go build -o /dictionary_app
+RUN go mod tidy
 
+# Kompilujemy aplikację do katalogu /app
+RUN go build -o dictionary_app
+
+# Otwieramy port aplikacji
 EXPOSE 8080
 
-CMD ["./dictionary_app"]
+# Uruchamiamy skompilowaną aplikację
+CMD ["/app/dictionary_app"]
