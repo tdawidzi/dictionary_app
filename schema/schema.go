@@ -137,11 +137,11 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 		"addTranslation": &graphql.Field{
 			Type: translationType,
 			Args: graphql.FieldConfigArgument{
-				"id_pl": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"wordPl": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
-				"id_en": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"wordEn": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
 			},
 			Resolve: handlers.AddTranslation,

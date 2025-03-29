@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/tdawidzi/dictionary_app/config"
@@ -14,42 +16,70 @@ import (
 )
 
 func main() {
-	config, err := config.Load()
+	// 1️⃣ Wczytanie konfiguracji
+	cfg, err := config.Load()
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatalf("Błąd ładowania konfiguracji: %v", err)
 	}
-	err = utils.ConnectDB(config)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer utils.DB.Close()
 
+	// 2️⃣ Połączenie z bazą danych
+	err = utils.ConnectDB(cfg)
+	if err != nil {
+		log.Fatalf("Błąd połączenia z bazą danych: %v", err)
+	}
+
+	// 3️⃣ Zamknięcie bazy danych po zakończeniu działania aplikacji
+	sqlDB, err := utils.DB.DB()
+	if err != nil {
+		log.Fatalf("Błąd pobrania instancji bazy danych: %v", err)
+	}
+	defer sqlDB.Close()
+
+	// 4️⃣ Handler GraphQL obsługujący zapytania
 	http.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
+		// Parsowanie zapytania GraphQL z body (dla POST)
+		var requestBody struct {
+			Query string `json:"query"`
+		}
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Błąd odczytu zapytania", http.StatusBadRequest)
+			return
+		}
+		err = json.Unmarshal(body, &requestBody)
+		if err != nil {
+			http.Error(w, "Błąd parsowania JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Wykonanie zapytania GraphQL
 		params := graphql.Params{
-			Schema: *schema.Schema,
-			// Request:       r,
+			Schema:        *schema.Schema,
 			Context:       context.Background(),
-			OperationName: r.URL.Query().Get("query"),
+			RequestString: requestBody.Query,
 		}
 		result := graphql.Do(params)
+
+		// Obsługa błędów GraphQL
 		if result.HasErrors() {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %s", result.Errors)))
+			http.Error(w, fmt.Sprintf("Błąd GraphQL: %v", result.Errors), http.StatusInternalServerError)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
 
-		data, err := json.Marshal(result.Data)
+		// Konwersja wyniku na JSON i zwrócenie odpowiedzi
+		response, err := json.Marshal(result)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error marshalling result data: %s", err)))
+			http.Error(w, "Błąd serializacji wyniku", http.StatusInternalServerError)
 			return
 		}
 
-		w.Write(data)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(response)
 	})
-	fmt.Println("Server listening on http://localhost:8080/graphql")
-	http.ListenAndServe(":8080", nil)
+
+	// 5️⃣ Uruchomienie serwera
+	fmt.Println("Serwer działa na: http://localhost:8080/graphql")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
