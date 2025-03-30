@@ -179,8 +179,11 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 		"addExample": &graphql.Field{
 			Type: exampleType,
 			Args: graphql.FieldConfigArgument{
-				"word_id": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"word": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"language": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
 				"example": &graphql.ArgumentConfig{
 					Type: graphql.NewNonNull(graphql.String),
