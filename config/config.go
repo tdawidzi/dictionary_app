@@ -25,9 +25,9 @@ func Load() (*Config, error) {
 	config := &Config{
 		DB_Host:     os.Getenv("DB_HOST"),
 		DB_Port:     os.Getenv("DB_PORT"),
-		DB_User:     os.Getenv("DB_USER"),
-		DB_Password: os.Getenv("DB_PASSWORD"),
-		DB_Name:     os.Getenv("DB_NAME"),
+		DB_User:     os.Getenv("POSTGRES_USER"),
+		DB_Password: os.Getenv("POSTGRES_PASSWORD"),
+		DB_Name:     os.Getenv("POSTGRES_DB"),
 	}
 	return config, nil
 }
