@@ -106,10 +106,10 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 		"updateWord": &graphql.Field{
 			Type: wordType,
 			Args: graphql.FieldConfigArgument{
-				"id": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"oldWord": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
-				"word": &graphql.ArgumentConfig{
+				"newWord": &graphql.ArgumentConfig{
 					Type: graphql.String,
 				},
 				"language": &graphql.ArgumentConfig{
@@ -151,14 +151,17 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 		"updateTranslation": &graphql.Field{
 			Type: translationType,
 			Args: graphql.FieldConfigArgument{
-				"id": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"oldWordPl": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
-				"id_pl": &graphql.ArgumentConfig{
-					Type: graphql.Int,
+				"oldWordEn": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
-				"id_en": &graphql.ArgumentConfig{
-					Type: graphql.Int,
+				"newWordPl": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"newWordEn": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
 			},
 			Resolve: handlers.UpdateTranslation,
@@ -168,8 +171,11 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 		"deleteTranslation": &graphql.Field{
 			Type: graphql.Boolean,
 			Args: graphql.FieldConfigArgument{
-				"id": &graphql.ArgumentConfig{
-					Type: graphql.NewNonNull(graphql.Int),
+				"wordPl": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
+				},
+				"wordEn": &graphql.ArgumentConfig{
+					Type: graphql.NewNonNull(graphql.String),
 				},
 			},
 			Resolve: handlers.DeleteTranslation,

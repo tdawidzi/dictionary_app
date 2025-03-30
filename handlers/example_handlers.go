@@ -94,15 +94,23 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 }
 
 func UpdateExample(p graphql.ResolveParams) (interface{}, error) {
-	oldExample, _ := p.Args["oldExample"].(string)
-	newExample, _ := p.Args["newExample"].(string)
+	// Sprawdzamy, czy ID istnieje i poprawnie konwertujemy na int
+	id, ok := p.Args["id"].(int)
+	if !ok {
+		return nil, fmt.Errorf("invalid or missing ID")
+	}
+
+	// Sprawdzamy, czy example został przekazany
+	newExample, hasExample := p.Args["example"].(string)
 
 	var example models.Example
-	if err := utils.DB.Where("example = ?", oldExample).First(&example).Error; err != nil {
+	if err := utils.DB.First(&example, id).Error; err != nil {
 		return nil, fmt.Errorf("example not found: %w", err)
 	}
 
-	example.Example = newExample
+	if hasExample { // Jeśli podano nowy przykład, aktualizujemy
+		example.Example = newExample
+	}
 
 	if err := utils.DB.Save(&example).Error; err != nil {
 		return nil, fmt.Errorf("failed to update example: %w", err)
@@ -112,11 +120,19 @@ func UpdateExample(p graphql.ResolveParams) (interface{}, error) {
 }
 
 func DeleteExample(p graphql.ResolveParams) (interface{}, error) {
-	exampleText, _ := p.Args["example"].(string)
-
-	if err := utils.DB.Where("example = ?", exampleText).Delete(&models.Example{}).Error; err != nil {
-		return nil, fmt.Errorf("failed to delete example: %w", err)
+	id, ok := p.Args["id"].(int)
+	if !ok {
+		return nil, fmt.Errorf("invalid or missing ID")
 	}
 
-	return true, nil
+	var example models.Example
+	if err := utils.DB.First(&example, id).Error; err != nil {
+		return false, fmt.Errorf("example not found: %w", err)
+	}
+
+	if err := utils.DB.Delete(&example).Error; err != nil {
+		return false, fmt.Errorf("failed to delete example: %w", err)
+	}
+
+	return true, nil // Zwracamy true, jeśli operacja się powiodła
 }
