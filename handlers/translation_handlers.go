@@ -39,7 +39,7 @@ func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("failed to fetch translations: %w", err)
 	}
 
-	// Using concurrency to fetch the translated words
+	// Using concurrency to fetch the translated words simultaneously
 	var wg sync.WaitGroup
 	resultCh := make(chan models.Word, len(translations))
 	errCh := make(chan error, len(translations))
@@ -77,7 +77,7 @@ func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
 		translatedWords = append(translatedWords, translatedWord)
 	}
 
-	// Check if any errors occurred
+	// Check for errors
 	if len(errCh) > 0 {
 		return nil, fmt.Errorf("one or more translations failed")
 	}
@@ -85,6 +85,7 @@ func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
 	return translatedWords, nil
 }
 
+// Adds translation to db
 func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
 	wordPl, _ := p.Args["wordPl"].(string)
 	wordEn, _ := p.Args["wordEn"].(string)
@@ -92,6 +93,7 @@ func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
 	var wordPL models.Word
 	var wordEN models.Word
 
+	// Check if words exists in dictionary with given languages
 	if err := utils.DB.Where("word = ? AND language = 'pl'", wordPl).First(&wordPL).Error; err != nil {
 		return nil, fmt.Errorf("polish word not found: %w", err)
 	}
@@ -100,11 +102,13 @@ func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("english word not found: %w", err)
 	}
 
+	// Get word id's
 	translation := models.Translation{
 		WordIDPl: wordPL.ID,
 		WordIDEn: wordEN.ID,
 	}
 
+	// Add translation
 	if err := utils.DB.Create(&translation).Error; err != nil {
 		return nil, fmt.Errorf("failed to create translation: %w", err)
 	}
@@ -112,6 +116,7 @@ func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
 	return translation, nil
 }
 
+// Modify translation existing in db
 func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 	oldWordPl, _ := p.Args["oldWordPl"].(string)
 	oldWordEn, _ := p.Args["oldWordEn"].(string)
@@ -120,6 +125,7 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 
 	var oldPL, oldEN, newPL, newEN models.Word
 
+	// Check if all given words exists in db
 	if err := utils.DB.Where("word = ? AND language = 'pl'", oldWordPl).First(&oldPL).Error; err != nil {
 		return nil, fmt.Errorf("old Polish word not found: %w", err)
 	}
@@ -136,11 +142,13 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("new English word not found: %w", err)
 	}
 
+	// Check if old translation exists
 	var translation models.Translation
 	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", oldPL.ID, oldEN.ID).First(&translation).Error; err != nil {
 		return nil, fmt.Errorf("translation not found: %w", err)
 	}
 
+	// Modify and save translation
 	translation.WordIDPl = newPL.ID
 	translation.WordIDEn = newEN.ID
 
@@ -151,6 +159,7 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 	return translation, nil
 }
 
+// Delete existing translation from db
 func DeleteTranslation(p graphql.ResolveParams) (interface{}, error) {
 	wordPl, _ := p.Args["wordPl"].(string)
 	wordEn, _ := p.Args["wordEn"].(string)
@@ -158,6 +167,7 @@ func DeleteTranslation(p graphql.ResolveParams) (interface{}, error) {
 	var wordPL models.Word
 	var wordEN models.Word
 
+	// Check for words in db
 	if err := utils.DB.Where("word = ? AND language = 'pl'", wordPl).First(&wordPL).Error; err != nil {
 		return nil, fmt.Errorf("polish word not found: %w", err)
 	}
@@ -166,6 +176,7 @@ func DeleteTranslation(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("english word not found: %w", err)
 	}
 
+	// Delete translation
 	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", wordPL.ID, wordEN.ID).Delete(&models.Translation{}).Error; err != nil {
 		return nil, fmt.Errorf("failed to delete translation: %w", err)
 	}

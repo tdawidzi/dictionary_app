@@ -9,7 +9,7 @@ import (
 // Representation of GraphQL schema of app
 var Schema *graphql.Schema
 
-// Define types:
+// Define types (from models.go) as graphql objects
 var wordType = graphql.NewObject(graphql.ObjectConfig{
 	Name: "Word",
 	Fields: graphql.Fields{
@@ -52,6 +52,7 @@ var exampleType = graphql.NewObject(graphql.ObjectConfig{
 	},
 })
 
+// Define queries
 var RootQuery = graphql.NewObject(graphql.ObjectConfig{
 	Name: "Query",
 	Fields: graphql.Fields{
@@ -85,6 +86,7 @@ var RootQuery = graphql.NewObject(graphql.ObjectConfig{
 	},
 })
 
+// Define Mutations
 var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 	Name: "Mutation",
 	Fields: graphql.Fields{
@@ -225,6 +227,7 @@ var RootMutation = graphql.NewObject(graphql.ObjectConfig{
 	},
 })
 
+// Initialization
 func init() {
 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
 		Query:    RootQuery,

@@ -7,7 +7,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config struct - configuration info
+// Config struct -  stores configuration info
 type Config struct {
 	DB_Host     string
 	DB_Port     string
@@ -20,7 +20,7 @@ type Config struct {
 func Load() (*Config, error) {
 	err := godotenv.Load(".env")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load database config from environment file: %w", err)
+		return nil, fmt.Errorf("failed to load config from environment file: %w", err)
 	}
 	config := &Config{
 		DB_Host:     os.Getenv("DB_HOST"),

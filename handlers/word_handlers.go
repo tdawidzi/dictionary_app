@@ -19,6 +19,7 @@ func GetWords(p graphql.ResolveParams) (interface{}, error) {
 	return words, nil
 }
 
+// Adds Word to database
 func AddWord(p graphql.ResolveParams) (interface{}, error) {
 	word, _ := p.Args["word"].(string)
 	language, _ := p.Args["language"].(string)
@@ -30,16 +31,19 @@ func AddWord(p graphql.ResolveParams) (interface{}, error) {
 	return newWord, nil
 }
 
+// Modify existing word in db
 func UpdateWord(p graphql.ResolveParams) (interface{}, error) {
 	oldWord, _ := p.Args["oldWord"].(string)
 	language, _ := p.Args["language"].(string)
 	newWord, _ := p.Args["newWord"].(string)
 
+	// Check if word exists
 	var word models.Word
 	if err := utils.DB.Where("word = ? AND language = ?", oldWord, language).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
+	// Modify and save word
 	word.Word = newWord
 	if err := utils.DB.Save(&word).Error; err != nil {
 		return nil, fmt.Errorf("failed to update word: %w", err)
@@ -48,10 +52,12 @@ func UpdateWord(p graphql.ResolveParams) (interface{}, error) {
 	return word, nil
 }
 
+// Delete existing word from database
 func DeleteWord(p graphql.ResolveParams) (interface{}, error) {
 	wordValue, _ := p.Args["word"].(string)
 	language, _ := p.Args["language"].(string)
 
+	// Check if word exists
 	var word models.Word
 	if err := utils.DB.Where("word = ? AND language = ?", wordValue, language).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
@@ -62,5 +68,6 @@ func DeleteWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("failed to delete word: %w", err)
 	}
 
-	return true, nil // Return true to indicate success
+	// Return true if succeeded
+	return true, nil
 }
