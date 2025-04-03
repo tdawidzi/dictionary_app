@@ -31,7 +31,7 @@ func GetExamplesForWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("failed to fetch example IDs: %w", err)
 	}
 
-	// Use goroutines to fetch each example concurrently
+	// Use concurrency to fetch examples at the same time
 	var wg sync.WaitGroup
 	examplesChan := make(chan models.Example, len(exampleIDs))
 	errorsChan := make(chan error, len(exampleIDs))
@@ -71,11 +71,13 @@ func GetExamplesForWord(p graphql.ResolveParams) (interface{}, error) {
 	return examples, nil
 }
 
+// AddExample adds an example to db associated with given word
 func AddExample(p graphql.ResolveParams) (interface{}, error) {
 	wordText, _ := p.Args["word"].(string)
 	language, _ := p.Args["language"].(string)
 	exampleText, _ := p.Args["example"].(string)
 
+	// Search for given word, and retrieve its id from db
 	var word models.Word
 	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
@@ -86,6 +88,7 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 		Example: exampleText,
 	}
 
+	// Add example to db
 	if err := utils.DB.Create(&example).Error; err != nil {
 		return nil, fmt.Errorf("failed to create example: %w", err)
 	}
@@ -93,25 +96,29 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 	return example, nil
 }
 
+// UpdateExample - modifies example text with given example id
 func UpdateExample(p graphql.ResolveParams) (interface{}, error) {
-	// Sprawdzamy, czy ID istnieje i poprawnie konwertujemy na int
+	// Check for errors in id and convert it to integer
 	id, ok := p.Args["id"].(int)
 	if !ok {
 		return nil, fmt.Errorf("invalid or missing ID")
 	}
 
-	// Sprawdzamy, czy example został przekazany
+	// Check if argument example is given
 	newExample, hasExample := p.Args["example"].(string)
 
+	// Find example with given id
 	var example models.Example
 	if err := utils.DB.First(&example, id).Error; err != nil {
 		return nil, fmt.Errorf("example not found: %w", err)
 	}
 
-	if hasExample { // Jeśli podano nowy przykład, aktualizujemy
+	// Update example if new example is not nil
+	if hasExample {
 		example.Example = newExample
 	}
 
+	// Save changes
 	if err := utils.DB.Save(&example).Error; err != nil {
 		return nil, fmt.Errorf("failed to update example: %w", err)
 	}
@@ -119,12 +126,14 @@ func UpdateExample(p graphql.ResolveParams) (interface{}, error) {
 	return example, nil
 }
 
+// Deleting example with given id from db
 func DeleteExample(p graphql.ResolveParams) (interface{}, error) {
 	id, ok := p.Args["id"].(int)
 	if !ok {
 		return nil, fmt.Errorf("invalid or missing ID")
 	}
 
+	// Find example with given id
 	var example models.Example
 	if err := utils.DB.First(&example, id).Error; err != nil {
 		return false, fmt.Errorf("example not found: %w", err)
@@ -134,5 +143,6 @@ func DeleteExample(p graphql.ResolveParams) (interface{}, error) {
 		return false, fmt.Errorf("failed to delete example: %w", err)
 	}
 
-	return true, nil // Zwracamy true, jeśli operacja się powiodła
+	// Return true if succeeded
+	return true, nil
 }
