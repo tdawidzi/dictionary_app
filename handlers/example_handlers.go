@@ -79,7 +79,7 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 
 	// Search for given word, and retrieve its id from db
 	var word models.Word
-	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).First(&word).Error; err != nil {
+	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).Limit(1).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
