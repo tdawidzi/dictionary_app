@@ -152,7 +152,12 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 	translation.WordIDPl = newPL.ID
 	translation.WordIDEn = newEN.ID
 
-	if err := utils.DB.Save(&translation).Error; err != nil {
+	if err := utils.DB.Model(&models.Translation{}).
+		Where("id = ?", translation.ID).
+		Updates(models.Translation{
+			WordIDPl: newPL.ID,
+			WordIDEn: newEN.ID,
+		}).Error; err != nil {
 		return nil, fmt.Errorf("failed to update translation: %w", err)
 	}
 

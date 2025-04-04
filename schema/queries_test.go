@@ -378,8 +378,8 @@ func TestAddTranslation(t *testing.T) {
 
 	translation, ok := result.(models.Translation)
 	assert.True(t, ok)
-	assert.Equal(t, 1, translation.WordIDPl)
-	assert.Equal(t, 2, translation.WordIDEn)
+	assert.Equal(t, uint(1), translation.WordIDPl)
+	assert.Equal(t, uint(2), translation.WordIDEn)
 
 	assert.NoError(t, mock.ExpectationsWereMet()) // Sprawdzenie wywołań
 }
@@ -392,32 +392,32 @@ func TestUpdateTranslation(t *testing.T) {
 	oldWordEn, newWordEn := "house", "building"
 
 	// Mockowanie zapytań dla starych słów
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='pl' LIMIT 1`).
-		WithArgs(oldWordPl).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(oldWordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, oldWordPl, "pl"))
 
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='en' LIMIT 1`).
-		WithArgs(oldWordEn).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'en' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(oldWordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(2, oldWordEn, "en"))
 
 	// Mockowanie zapytań dla nowych słów
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='pl' LIMIT 1`).
-		WithArgs(newWordPl).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(newWordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(3, newWordPl, "pl"))
 
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='en' LIMIT 1`).
-		WithArgs(newWordEn).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'en' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(newWordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(4, newWordEn, "en"))
 
 	// Mockowanie pobrania istniejącego tłumaczenia
-	mock.ExpectQuery(`SELECT \* FROM "translations" WHERE word_id_pl=\$1 AND word_id_en=\$2 LIMIT 1`).
-		WithArgs(1, 2).
-		WillReturnRows(sqlmock.NewRows([]string{"word_id_pl", "word_id_en"}).AddRow(1, 2))
+	mock.ExpectQuery(`SELECT \* FROM "translations" WHERE word_id_pl = \$1 AND word_id_en = \$2 ORDER BY "translations"."id" LIMIT \$3`).
+		WithArgs(1, 2, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id_pl", "word_id_en"}).AddRow(1, 1, 2))
 
 	// Mockowanie aktualizacji tłumaczenia
 	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE "translations" SET "word_id_pl"=\$1, "word_id_en"=\$2 WHERE "word_id_pl"=\$3 AND "word_id_en"=\$4`).
-		WithArgs(3, 4, 1, 2).
+	mock.ExpectExec(`UPDATE "translations"`).
+		WithArgs(3, 4, 1). // WordIDPl, WordIDEn, ID
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
@@ -437,8 +437,8 @@ func TestUpdateTranslation(t *testing.T) {
 
 	translation, ok := result.(models.Translation)
 	assert.True(t, ok)
-	assert.Equal(t, 3, translation.WordIDPl)
-	assert.Equal(t, 4, translation.WordIDEn)
+	assert.Equal(t, 3, int(translation.WordIDPl))
+	assert.Equal(t, 4, int(translation.WordIDEn))
 
 	assert.NoError(t, mock.ExpectationsWereMet()) // Sprawdzenie wywołań
 }
@@ -451,17 +451,17 @@ func TestDeleteTranslation(t *testing.T) {
 	wordEn := "house"
 
 	// Mockowanie zapytań o istnienie słów
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='pl' LIMIT 1`).
-		WithArgs(wordPl).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(wordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, wordPl, "pl"))
 
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word=\$1 AND language='en' LIMIT 1`).
-		WithArgs(wordEn).
+	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'en' ORDER BY "words"."id" LIMIT \$2`).
+		WithArgs(wordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(2, wordEn, "en"))
 
 	// Mockowanie usuwania tłumaczenia
 	mock.ExpectBegin()
-	mock.ExpectExec(`DELETE FROM "translations" WHERE "word_id_pl"=\$1 AND "word_id_en"=\$2`).
+	mock.ExpectExec(`DELETE FROM "translations" WHERE word_id_pl = \$1 AND word_id_en = \$2`).
 		WithArgs(1, 2).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
