@@ -17,54 +17,54 @@ func GetExamplesForWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("invalid word input")
 	}
 
-	// Retrieve the word from the database
+	// Fetch the word first
 	var word models.Word
-	err := utils.DB.Where("word = ?", wordText).First(&word).Error
-	if err != nil {
+	if err := utils.DB.Where("word = ?", wordText).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
-	// Fetch all example IDs associated with the word
+	// Get all example IDs in one query
 	var exampleIDs []int
-	err = utils.DB.Model(&models.Example{}).Where("word_id = ?", word.ID).Pluck("id", &exampleIDs).Error
-	if err != nil {
+	if err := utils.DB.Model(&models.Example{}).
+		Where("word_id = ?", word.ID).
+		Pluck("id", &exampleIDs).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch example IDs: %w", err)
 	}
 
-	// Use concurrency to fetch examples at the same time
-	var wg sync.WaitGroup
-	examplesChan := make(chan models.Example, len(exampleIDs))
-	errorsChan := make(chan error, len(exampleIDs))
+	if len(exampleIDs) == 0 {
+		return []models.Example{}, nil
+	}
 
-	for _, exampleID := range exampleIDs {
+	// Pre-allocate slice with exact capacity
+	examples := make([]models.Example, 0, len(exampleIDs))
+	var (
+		mu             sync.Mutex
+		wg             sync.WaitGroup
+		errorsOccurred bool
+	)
+
+	for _, id := range exampleIDs {
 		wg.Add(1)
-		go func(id int) {
+		go func(exampleID int) {
 			defer wg.Done()
+
 			var example models.Example
-			err := utils.DB.First(&example, id).Error
-			if err != nil {
-				errorsChan <- fmt.Errorf("failed to fetch example: %w", err)
+			if err := utils.DB.First(&example, exampleID).Error; err != nil {
+				mu.Lock()
+				errorsOccurred = true
+				mu.Unlock()
 				return
 			}
-			examplesChan <- example
-		}(exampleID)
+
+			mu.Lock()
+			examples = append(examples, example)
+			mu.Unlock()
+		}(id)
 	}
 
-	// Close channels when all goroutines are done
-	go func() {
-		wg.Wait()
-		close(examplesChan)
-		close(errorsChan)
-	}()
+	wg.Wait()
 
-	// Collect results
-	var examples []models.Example
-	for example := range examplesChan {
-		examples = append(examples, example)
-	}
-
-	// Check for errors
-	if len(errorsChan) > 0 {
+	if errorsOccurred {
 		return nil, fmt.Errorf("some examples could not be fetched")
 	}
 
@@ -79,7 +79,7 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 
 	// Search for given word, and retrieve its id from db
 	var word models.Word
-	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).First(&word).Error; err != nil {
+	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).Limit(1).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 

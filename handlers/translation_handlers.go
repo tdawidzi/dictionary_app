@@ -17,69 +17,70 @@ func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("invalid word")
 	}
 
-	// Retrieve the word from the database based on its value
 	var word models.Word
-	err := utils.DB.Where("word = ?", wordText).First(&word).Error
-	if err != nil {
+	if err := utils.DB.Where("word = ?", wordText).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
+	// Early return for unsupported languages
+	if word.Language != "pl" && word.Language != "en" {
+		return nil, fmt.Errorf("unsupported language: %s", word.Language)
+	}
+
+	// Fetch translations based on word language
 	var translations []models.Translation
-	if word.Language == "pl" {
-		// If the word is Polish, fetch English translations
-		err = utils.DB.Where("word_id_pl = ?", word.ID).Find(&translations).Error
-	} else if word.Language == "en" {
-		// If the word is English, fetch Polish translations
-		err = utils.DB.Where("word_id_en = ?", word.ID).Find(&translations).Error
-	} else {
-		return nil, fmt.Errorf("word has an unsupported language: %s", word.Language)
+	var translationErr error
+
+	switch word.Language {
+	case "pl":
+		translationErr = utils.DB.Where("word_id_pl = ?", word.ID).Find(&translations).Error
+	case "en":
+		translationErr = utils.DB.Where("word_id_en = ?", word.ID).Find(&translations).Error
+	default:
+		return nil, fmt.Errorf("unsupported language: %s", word.Language)
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch translations: %w", err)
+	if translationErr != nil {
+		return nil, fmt.Errorf("failed to fetch translations: %w", translationErr)
 	}
 
-	// Using concurrency to fetch the translated words simultaneously
+	// Pre-allocate slice with known capacity
+	translatedWords := make([]models.Word, 0, len(translations))
 	var wg sync.WaitGroup
-	resultCh := make(chan models.Word, len(translations))
-	errCh := make(chan error, len(translations))
+	var mu sync.Mutex
+	var errorsOccurred bool
 
 	for _, translation := range translations {
 		wg.Add(1)
 		go func(t models.Translation) {
 			defer wg.Done()
+
 			var translatedWord models.Word
 			var lookupErr error
 
-			if word.Language == "pl" {
-				lookupErr = utils.DB.First(&translatedWord, t.WordIDEn).Error
-			} else {
-				lookupErr = utils.DB.First(&translatedWord, t.WordIDPl).Error
+			// Determine which word ID to look up
+			wordID := t.WordIDEn
+			if word.Language == "en" {
+				wordID = t.WordIDPl
 			}
 
+			lookupErr = utils.DB.First(&translatedWord, wordID).Error
+
+			mu.Lock()
+			defer mu.Unlock()
+
 			if lookupErr != nil {
-				errCh <- lookupErr
+				errorsOccurred = true
 			} else {
-				resultCh <- translatedWord
+				translatedWords = append(translatedWords, translatedWord)
 			}
 		}(translation)
 	}
 
-	// Closing channels once all goroutines finish
-	go func() {
-		wg.Wait()
-		close(resultCh)
-		close(errCh)
-	}()
+	wg.Wait()
 
-	var translatedWords []models.Word
-	for translatedWord := range resultCh {
-		translatedWords = append(translatedWords, translatedWord)
-	}
-
-	// Check for errors
-	if len(errCh) > 0 {
-		return nil, fmt.Errorf("one or more translations failed")
+	if errorsOccurred {
+		return nil, fmt.Errorf("some translations could not be fetched")
 	}
 
 	return translatedWords, nil
@@ -152,7 +153,12 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 	translation.WordIDPl = newPL.ID
 	translation.WordIDEn = newEN.ID
 
-	if err := utils.DB.Save(&translation).Error; err != nil {
+	if err := utils.DB.Model(&models.Translation{}).
+		Where("id = ?", translation.ID).
+		Updates(models.Translation{
+			WordIDPl: newPL.ID,
+			WordIDEn: newEN.ID,
+		}).Error; err != nil {
 		return nil, fmt.Errorf("failed to update translation: %w", err)
 	}
 
