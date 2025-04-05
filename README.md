@@ -101,6 +101,7 @@ query {
 }
 ```
 Add translation:
+(Adding translation is only 'connecting' two words in database - to create translation, both words have to be previously created)
 ```
 mutation {
   addTranslation(wordPl: "kot", wordEn: "cat") {
