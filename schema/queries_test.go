@@ -2,7 +2,11 @@ package schema
 
 import (
 	//"sync"
+
+	"fmt"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/graphql-go/graphql"
@@ -16,7 +20,7 @@ import (
 	"github.com/tdawidzi/dictionary_app/utils"
 )
 
-// 🟢 Test GetWords - Pobieranie wszystkich słów
+// Test GetWords - Fetchung all words from database
 func TestGetWords(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -40,7 +44,7 @@ func TestGetWords(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// 🟢 Test AddWord - Dodawanie nowego słowa
+// Test AddWord - Adding new word to database
 func TestAddWord(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -51,7 +55,7 @@ func TestAddWord(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "words" \("word","language"\) VALUES \(\$1,\$2\) RETURNING "id"`).
 		WithArgs(wordText, language).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1)) // Zwracamy ID nowo dodanego słowa
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1)) // id of newly added word
 	mock.ExpectCommit()
 
 	params := graphql.ResolveParams{
@@ -74,7 +78,7 @@ func TestAddWord(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// 🟢 Test UpdateWord - Modyfikacja istniejącego słowa
+// Test UpdateWord - Modification of existing word
 func TestUpdateWord(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -83,16 +87,14 @@ func TestUpdateWord(t *testing.T) {
 	newWord := "house"
 	language := "en"
 
-	// Mockowanie wyszukiwania słowa
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = \$2 ORDER BY "words"."id" LIMIT \$3`).
 		WithArgs(oldWord, language, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, oldWord, language))
 
-	// Mockowanie aktualizacji słowa
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "words" SET "word"=\$1,"language"=\$2 WHERE "id" = \$3`).
 		WithArgs(newWord, language, 1).
-		WillReturnResult(sqlmock.NewResult(1, 1)) // Poprawka
+		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
 	params := graphql.ResolveParams{
@@ -116,7 +118,7 @@ func TestUpdateWord(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// 🟢 Test DeleteWord - Usuwanie słowa
+// Test DeleteWord - Deletion of word existing in database
 func TestDeleteWord(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -150,96 +152,135 @@ func TestDeleteWord(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// Test dla GetExamplesForWord
+// Test GetExamplesForWord - fetching all examples for given word
+// Consists of different test, simulating different possible concurrency vulnerabilities
 func TestGetExamplesForWord(t *testing.T) {
-	// Tworzymy mock bazy danych SQL
-	sqlDB, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer sqlDB.Close()
+	t.Run("successful fetch", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
 
-	// Tworzymy instancję GORM z mockiem SQL
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: sqlDB,
-	}), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		wordText := "house"
+		word := models.Word{ID: 1, Word: wordText, Language: "en"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT "id" FROM "examples"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10).AddRow(20))
+
+		// Allow any order for concurrent queries
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(sqlmock.AnyArg(), 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).
+				AddRow(10, word.ID, "Example 1"))
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(sqlmock.AnyArg(), 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).
+				AddRow(20, word.ID, "Example 2"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		result, err := handlers.GetExamplesForWord(params)
+
+		assert.NoError(t, err)
+		assert.Len(t, result.([]models.Example), 2)
+		assert.NoError(t, mock.ExpectationsWereMet())
 	})
-	assert.NoError(t, err)
 
-	// Podmieniamy globalne utils.DB na mockowaną bazę danych
-	utils.DB = gormDB
+	t.Run("no examples found", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
 
-	// Dane testowe
-	wordText := "test"
-	word := models.Word{ID: 1, Word: wordText}
-	exampleIDs := []int{1, 2}
-	example1 := models.Example{ID: 1, WordID: 1, Example: "Example 1"}
-	example2 := models.Example{ID: 2, WordID: 1, Example: "Example 2"}
+		wordText := "house"
+		word := models.Word{ID: 1, Word: wordText, Language: "en"}
 
-	// Oczekiwane zapytania do bazy danych
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
 
-	// Pobranie słowa z bazy danych
-	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 ORDER BY "words"."id" LIMIT \$2`).
-		WithArgs(wordText, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "word"}).AddRow(1, "test"))
+		mock.ExpectQuery(`SELECT "id" FROM "examples"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	// Pobranie listy przykładów
-	mock.ExpectQuery(`SELECT "id" FROM "examples" WHERE word_id = \$1`).
-		WithArgs(word.ID).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(exampleIDs[0]).AddRow(exampleIDs[1]))
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		result, err := handlers.GetExamplesForWord(params)
 
-	// Pobranie treści przykładu o ID 1
-	mock.ExpectQuery(`SELECT \* FROM "examples" WHERE "examples"."id" = \$1 ORDER BY "examples"."id" LIMIT \$2`).
-		WithArgs(example1.ID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).AddRow(example1.ID, example1.WordID, example1.Example))
+		assert.NoError(t, err)
+		assert.Len(t, result.([]models.Example), 0)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 
-	// Pobranie treści przykładu o ID 2
-	mock.ExpectQuery(`SELECT \* FROM "examples" WHERE "examples"."id" = \$1 ORDER BY "examples"."id" LIMIT \$2`).
-		WithArgs(example2.ID, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).AddRow(example2.ID, example2.WordID, example2.Example))
+	t.Run("partial failure", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
 
-	// Parametry GraphQL
-	params := graphql.ResolveParams{
-		Args: map[string]interface{}{
-			"word": wordText,
-		},
-	}
+		wordText := "house"
+		word := models.Word{ID: 1, Word: wordText, Language: "en"}
 
-	// Wywołanie funkcji
-	result, err := handlers.GetExamplesForWord(params)
-	// Obsługa błędu w wyniku result == nil
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err) // Teraz test od razu przerywa działanie
-	}
-	assert.Len(t, result, 2)
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
 
-	// Sprawdzenie wyników
-	assert.NoError(t, err)
-	assert.Len(t, result, 2)
-	assert.Equal(t, "Example 1", result.([]models.Example)[0].Example)
-	assert.Equal(t, "Example 2", result.([]models.Example)[1].Example)
+		mock.ExpectQuery(`SELECT "id" FROM "examples"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10).AddRow(20))
 
-	// Sprawdzenie, czy wszystkie zapytania zostały wykonane
-	assert.NoError(t, mock.ExpectationsWereMet())
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(10, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).
+				AddRow(10, word.ID, "Example 1"))
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(20, 1).
+			WillReturnError(fmt.Errorf("not found"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		_, err := handlers.GetExamplesForWord(params)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "some examples could not be fetched")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("goroutine leak check", func(t *testing.T) {
+		// Store initial goroutine count
+		initial := runtime.NumGoroutine()
+
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "house"
+		word := models.Word{ID: 1, Word: wordText, Language: "en"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT "id" FROM "examples"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(10, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).
+				AddRow(10, word.ID, "Example 1"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		handlers.GetExamplesForWord(params)
+
+		// Allow some time for goroutines to finish
+		time.Sleep(100 * time.Millisecond)
+		assert.Equal(t, initial, runtime.NumGoroutine(), "goroutine leak detected")
+	})
 }
 
-func setupTestDB(t *testing.T) (sqlmock.Sqlmock, func()) {
-	sqlDB, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: sqlDB,
-	}), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-	})
-	assert.NoError(t, err)
-
-	utils.DB = gormDB
-
-	return mock, func() {
-		sqlDB.Close()
-	}
-}
-
+// Test AddExample - adding new example to database
 func TestAddExample(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -248,12 +289,10 @@ func TestAddExample(t *testing.T) {
 	language := "en"
 	exampleText := "This is an example"
 
-	// Mockowanie zapytania do znalezienia słowa
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = \$2 ORDER BY "words"."id"`).
 		WithArgs(wordText, language, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, wordText, language))
 
-	// Mockowanie wstawienia przykładu do bazy
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "examples" \("word_id","example"\) VALUES \(\$1,\$2\) RETURNING "id"`).
 		WithArgs(1, exampleText).
@@ -276,6 +315,7 @@ func TestAddExample(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Test Update example - modify example already existing in database
 func TestUpdateExample(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -283,12 +323,10 @@ func TestUpdateExample(t *testing.T) {
 	exampleID := 1
 	newExampleText := "Updated example"
 
-	// Mockowanie pobrania istniejącego przykładu
 	mock.ExpectQuery(`SELECT \* FROM "examples" WHERE "examples"."id" = \$1`).
 		WithArgs(exampleID, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).AddRow(exampleID, 1, "Old example"))
 
-	// Mockowanie aktualizacji rekordu
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "examples" SET "word_id"=\$1,"example"=\$2 WHERE "id" = \$3`).
 		WithArgs(1, "Updated example", 1).
@@ -310,18 +348,17 @@ func TestUpdateExample(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Test Delete example - deleting example already existing in database
 func TestDeleteExample(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
 
 	exampleID := 1
 
-	// Mockowanie pobrania przykładu przed usunięciem
 	mock.ExpectQuery(`SELECT \* FROM "examples" WHERE "examples"."id" = \$1`).
 		WithArgs(exampleID, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).AddRow(exampleID, 1, "Some example"))
 
-	// Mockowanie usunięcia przykładu
 	mock.ExpectBegin()
 	mock.ExpectExec(`DELETE FROM "examples" WHERE "examples"."id" = \$1`).
 		WithArgs(exampleID).
@@ -341,6 +378,164 @@ func TestDeleteExample(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Test GetTranslationForWord - Fetching all translations of given word from database
+// Consists of different test, simulating different possible concurrency vulnerabilities
+func TestGetTranslationsForWord(t *testing.T) {
+	t.Run("successful fetch", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "dom"
+		word := models.Word{ID: 1, Word: wordText, Language: "pl"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT \* FROM "translations"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id_pl", "word_id_en"}).
+				AddRow(1, 1, 2).AddRow(2, 1, 3))
+
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(sqlmock.AnyArg(), 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(2, "house", "en"))
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(sqlmock.AnyArg(), 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(3, "home", "en"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		result, err := handlers.GetTranslationsForWord(params)
+
+		assert.NoError(t, err)
+		assert.Len(t, result.([]models.Word), 2)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no translations found", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "dom"
+		word := models.Word{ID: 1, Word: wordText, Language: "pl"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT \* FROM "translations"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id_pl", "word_id_en"}))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		result, err := handlers.GetTranslationsForWord(params)
+
+		assert.NoError(t, err)
+		assert.Len(t, result.([]models.Word), 0)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("partial translation failure", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "dom"
+		word := models.Word{ID: 1, Word: wordText, Language: "pl"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT \* FROM "translations"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id_pl", "word_id_en"}).
+				AddRow(1, 1, 2).AddRow(2, 1, 3))
+
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(2, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(2, "house", "en"))
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(3, 1).
+			WillReturnError(fmt.Errorf("not found"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		_, err := handlers.GetTranslationsForWord(params)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "some translations could not be fetched")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("goroutine leak check", func(t *testing.T) {
+		// Get baseline count before any test setup
+		initial := runtime.NumGoroutine()
+
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "house"
+		word := models.Word{ID: 1, Word: wordText, Language: "en"}
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		mock.ExpectQuery(`SELECT "id" FROM "examples"`).
+			WithArgs(word.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
+
+		mock.ExpectQuery(`SELECT \* FROM "examples"`).
+			WithArgs(10, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word_id", "example"}).
+				AddRow(10, word.ID, "Example 1"))
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		result, err := handlers.GetExamplesForWord(params)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		// Allow more time for cleanup
+		time.Sleep(200 * time.Millisecond)
+
+		// Allow 2 goroutines variance (test framework might create some)
+		current := runtime.NumGoroutine()
+		if current > initial+2 {
+			t.Errorf("goroutine leak detected: expected <= %d, got %d", initial+2, current)
+		}
+	})
+
+	t.Run("unsupported language", func(t *testing.T) {
+		mock, teardown := setupTestDB(t)
+		defer teardown()
+
+		wordText := "dom"
+		word := models.Word{ID: 1, Word: wordText, Language: "de"} // Unsupported
+
+		mock.ExpectQuery(`SELECT \* FROM "words"`).
+			WithArgs(wordText, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).
+				AddRow(word.ID, word.Word, word.Language))
+
+		// No expectations for further queries since we should return early
+
+		params := graphql.ResolveParams{Args: map[string]interface{}{"word": wordText}}
+		_, err := handlers.GetTranslationsForWord(params)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported language")
+		assert.NoError(t, mock.ExpectationsWereMet()) // Verify no unexpected queries were made
+	})
+}
+
+// Test AddTranslation - adding new translation to database
 func TestAddTranslation(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -348,7 +543,6 @@ func TestAddTranslation(t *testing.T) {
 	wordPl := "dom"
 	wordEn := "house"
 
-	// Mockowanie zapytań o istnienie słów
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
 		WithArgs(wordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, wordPl, "pl"))
@@ -357,7 +551,6 @@ func TestAddTranslation(t *testing.T) {
 		WithArgs(wordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(2, wordEn, "en"))
 
-	// Mockowanie dodania tłumaczenia
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "translations" \("word_id_pl","word_id_en"\) VALUES \(\$1,\$2\) RETURNING "id"`).
 		WithArgs(1, 2).
@@ -381,9 +574,10 @@ func TestAddTranslation(t *testing.T) {
 	assert.Equal(t, uint(1), translation.WordIDPl)
 	assert.Equal(t, uint(2), translation.WordIDEn)
 
-	assert.NoError(t, mock.ExpectationsWereMet()) // Sprawdzenie wywołań
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Test Update Translation - Modify translation that already exists in dtatabase
 func TestUpdateTranslation(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -391,7 +585,6 @@ func TestUpdateTranslation(t *testing.T) {
 	oldWordPl, newWordPl := "dom", "budynek"
 	oldWordEn, newWordEn := "house", "building"
 
-	// Mockowanie zapytań dla starych słów
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
 		WithArgs(oldWordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, oldWordPl, "pl"))
@@ -400,7 +593,6 @@ func TestUpdateTranslation(t *testing.T) {
 		WithArgs(oldWordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(2, oldWordEn, "en"))
 
-	// Mockowanie zapytań dla nowych słów
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
 		WithArgs(newWordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(3, newWordPl, "pl"))
@@ -409,12 +601,10 @@ func TestUpdateTranslation(t *testing.T) {
 		WithArgs(newWordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(4, newWordEn, "en"))
 
-	// Mockowanie pobrania istniejącego tłumaczenia
 	mock.ExpectQuery(`SELECT \* FROM "translations" WHERE word_id_pl = \$1 AND word_id_en = \$2 ORDER BY "translations"."id" LIMIT \$3`).
 		WithArgs(1, 2, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word_id_pl", "word_id_en"}).AddRow(1, 1, 2))
 
-	// Mockowanie aktualizacji tłumaczenia
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE "translations"`).
 		WithArgs(3, 4, 1). // WordIDPl, WordIDEn, ID
@@ -440,9 +630,10 @@ func TestUpdateTranslation(t *testing.T) {
 	assert.Equal(t, 3, int(translation.WordIDPl))
 	assert.Equal(t, 4, int(translation.WordIDEn))
 
-	assert.NoError(t, mock.ExpectationsWereMet()) // Sprawdzenie wywołań
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Test DeleteTranslation - delete translation already existing in database
 func TestDeleteTranslation(t *testing.T) {
 	mock, teardown := setupTestDB(t)
 	defer teardown()
@@ -450,7 +641,6 @@ func TestDeleteTranslation(t *testing.T) {
 	wordPl := "dom"
 	wordEn := "house"
 
-	// Mockowanie zapytań o istnienie słów
 	mock.ExpectQuery(`SELECT \* FROM "words" WHERE word = \$1 AND language = 'pl' ORDER BY "words"."id" LIMIT \$2`).
 		WithArgs(wordPl, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(1, wordPl, "pl"))
@@ -459,7 +649,6 @@ func TestDeleteTranslation(t *testing.T) {
 		WithArgs(wordEn, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "word", "language"}).AddRow(2, wordEn, "en"))
 
-	// Mockowanie usuwania tłumaczenia
 	mock.ExpectBegin()
 	mock.ExpectExec(`DELETE FROM "translations" WHERE word_id_pl = \$1 AND word_id_en = \$2`).
 		WithArgs(1, 2).
@@ -478,5 +667,23 @@ func TestDeleteTranslation(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, result.(bool))
 
-	assert.NoError(t, mock.ExpectationsWereMet()) // Sprawdzenie wywołań
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func setupTestDB(t *testing.T) (sqlmock.Sqlmock, func()) {
+	sqlDB, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+		Conn: sqlDB,
+	}), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	assert.NoError(t, err)
+
+	utils.DB = gormDB
+
+	return mock, func() {
+		sqlDB.Close()
+	}
 }
