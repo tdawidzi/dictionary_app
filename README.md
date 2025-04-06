@@ -15,7 +15,7 @@ The application uses the following models:
 - **Translation**: A translation between two words in different languages.
 - **Example**: An example sentence using a word.
 
-![Database schema](https://github.com/tdawidzi/dictionary_app/blob/dev/Dictionary_database.svg)
+![Database schema](https://github.com/tdawidzi/dictionary_app/blob/master/Dictionary_database.svg)
 
 ## How to use
 ### Step 1: Clone the repository
