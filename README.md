@@ -56,15 +56,32 @@ For test you can use any GraphQL Client as Altair or GraphQL Playground
 
 ## Possible queries and mutations
 ### Managing Words
-List all words:
+List all words with translations:
 ```
  query {
    words {
      id
      word
      language
+     translations {
+      word
+      language
+    }
    }
  }
+```
+Query word with all translations:
+```
+query {
+  word(word: "kot") {
+    word
+    language
+    translations {
+      word
+      language
+    }
+  }
+}
 ```
 Add word:
 ```

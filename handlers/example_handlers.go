@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/tdawidzi/dictionary_app/models"
 	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
+	"gorm.io/gorm"
 )
 
 // GetExamplesForWord fetches example sentences for a given word.
@@ -17,55 +18,16 @@ func GetExamplesForWord(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("invalid word input")
 	}
 
-	// Fetch the word first
+	// Fetch the word by its text
 	var word models.Word
 	if err := utils.DB.Where("word = ?", wordText).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
-	// Get all example IDs in one query
-	var exampleIDs []int
-	if err := utils.DB.Model(&models.Example{}).
-		Where("word_id = ?", word.ID).
-		Pluck("id", &exampleIDs).Error; err != nil {
-		return nil, fmt.Errorf("failed to fetch example IDs: %w", err)
-	}
-
-	if len(exampleIDs) == 0 {
-		return []models.Example{}, nil
-	}
-
-	// Pre-allocate slice with exact capacity
-	examples := make([]models.Example, 0, len(exampleIDs))
-	var (
-		mu             sync.Mutex
-		wg             sync.WaitGroup
-		errorsOccurred bool
-	)
-
-	for _, id := range exampleIDs {
-		wg.Add(1)
-		go func(exampleID int) {
-			defer wg.Done()
-
-			var example models.Example
-			if err := utils.DB.First(&example, exampleID).Error; err != nil {
-				mu.Lock()
-				errorsOccurred = true
-				mu.Unlock()
-				return
-			}
-
-			mu.Lock()
-			examples = append(examples, example)
-			mu.Unlock()
-		}(id)
-	}
-
-	wg.Wait()
-
-	if errorsOccurred {
-		return nil, fmt.Errorf("some examples could not be fetched")
+	// Fetch all examples in one query
+	var examples []models.Example
+	if err := utils.DB.Where("word_id = ?", word.ID).Find(&examples).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch examples: %w", err)
 	}
 
 	return examples, nil
@@ -77,22 +39,27 @@ func AddExample(p graphql.ResolveParams) (interface{}, error) {
 	language, _ := p.Args["language"].(string)
 	exampleText, _ := p.Args["example"].(string)
 
-	// Search for given word, and retrieve its id from db
 	var word models.Word
-	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).Limit(1).First(&word).Error; err != nil {
+	if err := utils.DB.Where("word = ? AND language = ?", wordText, language).First(&word).Error; err != nil {
 		return nil, fmt.Errorf("word not found: %w", err)
 	}
 
+	// Check if record exists
+	var existing models.Example
+	if err := utils.DB.Where("example = ? AND word_id = ?", exampleText, word.ID).First(&existing).Error; err == nil {
+		return existing, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query example: %w", err)
+	}
+
+	// Create new record
 	example := models.Example{
 		WordID:  word.ID,
 		Example: exampleText,
 	}
-
-	// Add example to db
 	if err := utils.DB.Create(&example).Error; err != nil {
 		return nil, fmt.Errorf("failed to create example: %w", err)
 	}
-
 	return example, nil
 }
 
