@@ -108,15 +108,6 @@ mutation {
 }
 ```
 ### Managing Translations
-List all translations for given word:
-```
-query {
-  translationsForWord(word: "kot") {
-    word
-    language
-    }
-}
-```
 Add translation:
 (Adding translation is only 'connecting' two words in database - to create translation, both words have to be previously created)
 ```
