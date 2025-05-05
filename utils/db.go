@@ -14,6 +14,14 @@ import (
 // DB represents the database connection.
 var DB *gorm.DB
 
+func GetDB() *gorm.DB {
+	return DB
+}
+
+func SetDB(d *gorm.DB) {
+	DB = d
+}
+
 // ConnectDB establishes a connection to the PostgreSQL database
 // with configuration stored in 'config' struct
 func ConnectDB(config *config.Config) error {
