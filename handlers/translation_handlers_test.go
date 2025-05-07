@@ -145,7 +145,7 @@ func TestConcurrentAddTranslation_RaceCondition(t *testing.T) {
 
 	wg.Wait()
 
-	// Powinien istnieć tylko jeden rekord
+	// Only one record should exist
 	var count int64
 	err := utils.DB.Model(&models.Translation{}).
 		Where("word_id_pl = ? AND word_id_en = ?", pl.ID, en.ID).

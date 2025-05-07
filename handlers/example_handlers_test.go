@@ -141,7 +141,7 @@ func TestConcurrentAddExample_RaceCondition(t *testing.T) {
 
 	wg.Wait()
 
-	// Sprawdź, czy w bazie danych istnieje tylko jeden przykład
+	// Check if only one example exists in db
 	var examples []models.Example
 	err = utils.DB.Where("example = ? AND word_id = ?", exampleText, word.ID).Find(&examples).Error
 	assert.NoError(t, err)
@@ -153,7 +153,7 @@ func TestConcurrentUpdateExample_RaceCondition(t *testing.T) {
 	err := utils.DB.AutoMigrate(&models.Word{}, &models.Example{})
 	assert.NoError(t, err)
 
-	// Przygotuj dane: jedno słowo i jeden przykład
+	// Prepare data
 	word := models.Word{Word: "testing", Language: "en"}
 	utils.DB.Create(&word)
 
@@ -240,7 +240,7 @@ func TestDeleteAndUpdateExample_RaceCondition(t *testing.T) {
 
 	wg.Wait()
 
-	// Sprawdź, czy rekord nadal istnieje
+	// Check if record still exists
 	var count int64
 	utils.DB.Model(&models.Example{}).Where("id = ?", example.ID).Count(&count)
 

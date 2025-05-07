@@ -20,6 +20,6 @@ type Translation struct {
 type Example struct {
 	ID      uint   `gorm:"primaryKey"`
 	WordID  uint   `gorm:"not null; uniqueIndex:wordid_example"`        // unique example - word pair
-	Example string `gorm:"unique;not null; uniqueIndex:wordid_example"` // unique exaple - word pair
+	Example string `gorm:"unique;not null; uniqueIndex:wordid_example"` // unique example - word pair
 	Word    Word   `gorm:"foreignKey:WordID;references:ID;constraint:OnDelete:CASCADE"`
 }
