@@ -2,7 +2,6 @@ package testresources
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -16,13 +15,17 @@ import (
 func NewSingleTestConnection(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	// Start the database
 	db, err := NewInMemTestDB(t)
 	if err != nil {
 		t.Fatalf("failed to create test database: %v", err)
 	}
-	db.Start()
-	defer db.Stop()
+	err = db.Start()
+	if err != nil {
+		t.Fatalf("failed to start embedded postgres: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Stop()
+	})
 
 	// Load config
 	cfg, err := config.Load("..\\testresources\\")
@@ -36,15 +39,13 @@ func NewSingleTestConnection(t *testing.T) *gorm.DB {
 	}
 
 	return postgresDB
-
 }
 
 func NewInMemTestDB(t *testing.T) (*embeddedpostgres.EmbeddedPostgres, error) {
 	// Load config
-	f, _ := os.Getwd()
 	cfg, err := config.Load("..\\testresources\\")
 	if err != nil {
-		t.Fatalf("Error while loading configuration: %v, wdir: %v", err, f)
+		t.Fatalf("Error while loading configuration: %v,", err)
 	}
 	port, _ := strconv.ParseUint(cfg.DB_Port, 0, 32)
 

@@ -115,6 +115,14 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 		return nil, fmt.Errorf("translation not found: %w", err)
 	}
 
+	// Check if new translation does not exist
+	var existing models.Translation
+	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", newPL.ID, newEN.ID).First(&existing).Error; err == nil {
+		return existing, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query translation: %w", err)
+	}
+
 	// Modify and save translation
 	translation.WordIDPl = newPL.ID
 	translation.WordIDEn = newEN.ID
