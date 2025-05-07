@@ -1,86 +1,48 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/tdawidzi/dictionary_app/models"
 	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
+	"gorm.io/gorm"
 )
 
-// GetTranslationsForWord returns a list of words in a different language based on the given word.
 func GetTranslationsForWord(p graphql.ResolveParams) (interface{}, error) {
-	wordText, ok := p.Args["word"].(string)
+	word, ok := p.Source.(models.Word)
 	if !ok {
-		return nil, fmt.Errorf("invalid word")
+		return nil, fmt.Errorf("invalid source for translations")
 	}
 
-	var word models.Word
-	if err := utils.DB.Where("word = ?", wordText).First(&word).Error; err != nil {
-		return nil, fmt.Errorf("word not found: %w", err)
-	}
-
-	// Early return for unsupported languages
-	if word.Language != "pl" && word.Language != "en" {
-		return nil, fmt.Errorf("unsupported language: %s", word.Language)
-	}
-
-	// Fetch translations based on word language
 	var translations []models.Translation
-	var translationErr error
+	var err error
 
-	switch word.Language {
-	case "pl":
-		translationErr = utils.DB.Where("word_id_pl = ?", word.ID).Find(&translations).Error
-	case "en":
-		translationErr = utils.DB.Where("word_id_en = ?", word.ID).Find(&translations).Error
-	default:
+	if word.Language == "pl" {
+		err = utils.DB.Preload("WordEn").
+			Where("word_id_pl = ?", word.ID).
+			Find(&translations).Error
+	} else if word.Language == "en" {
+		err = utils.DB.Preload("WordPl").
+			Where("word_id_en = ?", word.ID).
+			Find(&translations).Error
+	} else {
 		return nil, fmt.Errorf("unsupported language: %s", word.Language)
 	}
 
-	if translationErr != nil {
-		return nil, fmt.Errorf("failed to fetch translations: %w", translationErr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch translations: %w", err)
 	}
 
-	// Pre-allocate slice with known capacity
 	translatedWords := make([]models.Word, 0, len(translations))
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var errorsOccurred bool
-
-	for _, translation := range translations {
-		wg.Add(1)
-		go func(t models.Translation) {
-			defer wg.Done()
-
-			var translatedWord models.Word
-			var lookupErr error
-
-			// Determine which word ID to look up
-			wordID := t.WordIDEn
-			if word.Language == "en" {
-				wordID = t.WordIDPl
-			}
-
-			lookupErr = utils.DB.First(&translatedWord, wordID).Error
-
-			mu.Lock()
-			defer mu.Unlock()
-
-			if lookupErr != nil {
-				errorsOccurred = true
-			} else {
-				translatedWords = append(translatedWords, translatedWord)
-			}
-		}(translation)
-	}
-
-	wg.Wait()
-
-	if errorsOccurred {
-		return nil, fmt.Errorf("some translations could not be fetched")
+	for _, t := range translations {
+		if word.Language == "pl" {
+			translatedWords = append(translatedWords, t.WordEn)
+		} else {
+			translatedWords = append(translatedWords, t.WordPl)
+		}
 	}
 
 	return translatedWords, nil
@@ -94,26 +56,30 @@ func AddTranslation(p graphql.ResolveParams) (interface{}, error) {
 	var wordPL models.Word
 	var wordEN models.Word
 
-	// Check if words exists in dictionary with given languages
+	// Check if words exists
 	if err := utils.DB.Where("word = ? AND language = 'pl'", wordPl).First(&wordPL).Error; err != nil {
 		return nil, fmt.Errorf("polish word not found: %w", err)
 	}
-
 	if err := utils.DB.Where("word = ? AND language = 'en'", wordEn).First(&wordEN).Error; err != nil {
 		return nil, fmt.Errorf("english word not found: %w", err)
 	}
 
-	// Get word id's
+	// Check if translation exists
+	var existing models.Translation
+	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", wordPL.ID, wordEN.ID).First(&existing).Error; err == nil {
+		return existing, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query translation: %w", err)
+	}
+
+	// Create new translation
 	translation := models.Translation{
 		WordIDPl: wordPL.ID,
 		WordIDEn: wordEN.ID,
 	}
-
-	// Add translation
 	if err := utils.DB.Create(&translation).Error; err != nil {
 		return nil, fmt.Errorf("failed to create translation: %w", err)
 	}
-
 	return translation, nil
 }
 
@@ -147,6 +113,14 @@ func UpdateTranslation(p graphql.ResolveParams) (interface{}, error) {
 	var translation models.Translation
 	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", oldPL.ID, oldEN.ID).First(&translation).Error; err != nil {
 		return nil, fmt.Errorf("translation not found: %w", err)
+	}
+
+	// Check if new translation does not exist
+	var existing models.Translation
+	if err := utils.DB.Where("word_id_pl = ? AND word_id_en = ?", newPL.ID, newEN.ID).First(&existing).Error; err == nil {
+		return existing, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query translation: %w", err)
 	}
 
 	// Modify and save translation

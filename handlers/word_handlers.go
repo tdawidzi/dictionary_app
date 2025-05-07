@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/tdawidzi/dictionary_app/models"
 	"github.com/tdawidzi/dictionary_app/utils"
 
 	"github.com/graphql-go/graphql"
+	"gorm.io/gorm"
 )
 
 // GetWords fetches all words in database - for display of dictionary content
@@ -24,6 +26,16 @@ func AddWord(p graphql.ResolveParams) (interface{}, error) {
 	word, _ := p.Args["word"].(string)
 	language, _ := p.Args["language"].(string)
 
+	var existing models.Word
+	if err := utils.DB.Where("word = ? AND language = ?", word, language).First(&existing).Error; err == nil {
+		// If record exists - return it
+		return existing, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Other errors
+		return nil, fmt.Errorf("failed to query word: %w", err)
+	}
+
+	// Record not found - create new record
 	newWord := models.Word{Word: word, Language: language}
 	if err := utils.DB.Create(&newWord).Error; err != nil {
 		return nil, fmt.Errorf("failed to add word: %w", err)
@@ -70,4 +82,17 @@ func DeleteWord(p graphql.ResolveParams) (interface{}, error) {
 
 	// Return true if succeeded
 	return true, nil
+}
+func GetWordByText(p graphql.ResolveParams) (interface{}, error) {
+	wordStr, ok := p.Args["word"].(string)
+	if !ok {
+		return nil, errors.New("missing word")
+	}
+
+	var word models.Word
+	if err := utils.DB.Where("word = ?", wordStr).First(&word).Error; err != nil {
+		return nil, fmt.Errorf("word not found: %w", err)
+	}
+
+	return word, nil
 }

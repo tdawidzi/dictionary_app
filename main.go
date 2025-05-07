@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 
@@ -17,7 +17,7 @@ import (
 
 func main() {
 	// Load config
-	cfg, err := config.Load()
+	cfg, err := config.Load("")
 	if err != nil {
 		log.Fatalf("Error while loading configuration: %v", err)
 	}
@@ -42,7 +42,7 @@ func main() {
 			Query string `json:"query"`
 		}
 
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "Error reading query", http.StatusBadRequest)
 			return

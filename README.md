@@ -30,7 +30,9 @@ cd dictionary_app
 ### Step 2: Create the .env file
 The .env file provides sensitive information about database connection.
 Change name of .env.example file to .env, and modify environmental variables included in it.
+Please note that there are two .env.example files. One in main folder, and other one in testresources folder. If you want do test the API with unit tests, then you have to modify names of both files to .env. Variables in test .env file dont have to be modify in order to work, but you can modify for example port for test database connection in there.
 SAVE CHANGES
+
 
 ### Step 3: Build and start API
 Run the following command (in main project folder) to build and start the application:
@@ -56,15 +58,32 @@ For test you can use any GraphQL Client as Altair or GraphQL Playground
 
 ## Possible queries and mutations
 ### Managing Words
-List all words:
+List all words with translations:
 ```
  query {
    words {
      id
      word
      language
+     translations {
+      word
+      language
+    }
    }
  }
+```
+Query word with all translations:
+```
+query {
+  word(word: "kot") {
+    word
+    language
+    translations {
+      word
+      language
+    }
+  }
+}
 ```
 Add word:
 ```
@@ -91,15 +110,6 @@ mutation {
 }
 ```
 ### Managing Translations
-List all translations for given word:
-```
-query {
-  translationsForWord(word: "kot") {
-    word
-    language
-    }
-}
-```
 Add translation:
 (Adding translation is only 'connecting' two words in database - to create translation, both words have to be previously created)
 ```
