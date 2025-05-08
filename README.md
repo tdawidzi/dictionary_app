@@ -30,7 +30,7 @@ cd dictionary_app
 ### Step 2: Create the .env file
 The .env file provides sensitive information about database connection.
 Change name of .env.example file to .env, and modify environmental variables included in it.
-Please note that there are two .env.example files. One in main folder, and other one in testresources folder. If you want do test the API with unit tests, then you have to modify names of both files to .env. Variables in test .env file dont have to be modify in order to work, but you can modify for example port for test database connection in there.
+Please note that there are two .env.example files. One in main folder, and other one in testresources folder. If you want do test the API with unit tests, then you have to modify names of both files to .env. Variables in test .env file dont have to be modified in order to work - deafault values should work just fine.
 SAVE CHANGES
 
 
